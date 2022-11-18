@@ -10,7 +10,12 @@ use ndarray::DataMut;
 use ndarray::linalg::Dot;
 use ndarray::LinalgScalar;
 use hdf5::file::File;
+use hdf5::types::DynValue::String;
 use hdf5::types::FixedAscii;
+use image::{GenericImageView, ImageBuffer, Rgb};
+use image::imageops::FilterType;
+use image::io::Reader as ImageReader;
+use ndarray_image::{NdImage, NdColor, open_image as op, Colors};
 use crate::test::testing;
 
 
@@ -134,6 +139,8 @@ fn predict(w: &Array2<f64>, b: f64, X: Array2<f64>) -> Array2<f64> {
     let A = sigmoid(&(w.t().dot(&X) + b));
 
     for n in 0..A.len_of(Axis(1)) {
+
+        println!("{:?} THIS", A[[0, n]]);
         if A[[0, n]] > 0.5 {
             y_prediction[[0, n]] = 1.
         }
@@ -194,32 +201,77 @@ fn predict(w: &Array2<f64>, b: f64, X: Array2<f64>) -> Array2<f64> {
 //     return Ok(train_set_y);
 // }
 
-fn model(x_train: Array2<f64>, y_train: Array1<f64>, x_test: Array2<f64>, y_test: Array1<f64>, num_iterations: i64, learning_rate: f64, print_cost: bool)  {
-    println!("{:?}", x_test.shape());
+fn model(x_train: Array2<f64>, y_train: Array1<f64>, x_test: Array2<f64>, y_test: Array1<f64>, num_iterations: i64, learning_rate: f64, print_cost: bool) -> (Array2<f64>, Array2<f64>, Array2<f64>, ArrayBase<OwnedRepr<f64>, Ix2>, f64, f64, i64) {
+
     let zeros = initialize_with_zeros(x_train.len_of(Axis(0)));
+
 
     let optz = optimize(&zeros.0, zeros.1, &x_train, &y_train, num_iterations, learning_rate, print_cost);
 
     let w = optz.0;
     let b = optz.1;
 
-
-
-
     let y_prediction_test = predict(&w, b, x_test);
     let y_prediction_train = predict(&w, b, x_train);
-    //
+    // //
     if print_cost {
         println!("train accuracy: {:?}", 100. - (&y_prediction_train - y_train).mean().unwrap().abs() * 100.);
         println!("test accuracy: {:?}", 100. - (&y_prediction_test - y_test).mean().unwrap().abs() * 100.)
     }
     //
     //
-    // return (optz.2, y_prediction_test, y_prediction_train, w.clone(), b, learning_rate, num_iterations);
+
+    return (optz.2, y_prediction_test, y_prediction_train, w, b, learning_rate, num_iterations);
 
 }
+use rulinalg::matrix::Matrix;
+use rulinalg::matrix::BaseMatrix;
+
+// fn test() -> image::error::ImageResult<()> {
+//     let img = image::open("./dataset/my/cat.jpg").unwrap();
+//     let (width, height) = img.dimensions();
+//
+//     let n = ( * height) as usize;
+//
+//     let new_dim = Dim([, 3]);
+//
+//     let img_a = img.resize_exact(64, 64, FilterType::Nearest).as_rgb8().unwrap()
+//         .to_vec().iter().map(|&e| e as f64 / 255.0).collect::<Vec<f64>>();
+//
+//     let a = Array2::from_shape_vec(new_dim, img_a).unwrap();
+//     println!("{:?}", a);
+//
+//     // let img_a = img.resize(64, 64, FilterType::Nearest).as_rgb8().unwrap()
+//     //     .to_vec().iter().map(|&e| e as f64 / 255.0).collect::<Vec<f64>>();
+// // Normalize image pixels to [0, 1]
+// //     let tmp = img_a.to_vec().iter().map(|&e| e as f64 / 255.0).collect::<Vec<f64>>();
+// // Reduce dimensions
+//
+// // Change the array values by using some other method
+//
+// // Image buffer for the new image
+// //     let mut img_buf = image::ImageBuffer::new(width, height);
+//     Ok(())
+//
+// }
+
+fn open_image(num_pixels: u32) -> ArrayBase<OwnedRepr<f64>, Ix2> {
+    let img = image::open("./dataset/my/cat.jpg").unwrap();
+    let (width, height) = img.dimensions();
+
+    let n = (num_pixels * num_pixels) as usize;
+
+    let new_dim = Dim([1, 12288]);
+
+    let img_a = img.resize_exact(64, 64, FilterType::Nearest).as_rgb8().unwrap()
+        .to_vec().iter().map(|&e| e as f64 / 255.).collect::<Vec<f64>>();
+
+    let image = Array2::from_shape_vec(new_dim, img_a).unwrap().reversed_axes();
 
 
+
+    return image;
+}
 
 fn main() {
     //testing(5000, 0.005, true);
@@ -242,22 +294,37 @@ fn main() {
 
     let label = open_labels.read_raw::<FixedAscii<10>>().unwrap();
 
-    let num_px = train_set_x.len_of(Axis(1)) as f64;
+    let num_px = train_set_x.len_of(Axis(1));
 
 
     let train_set_x_flatten =
-        Array::from_shape_vec((12288, 209), train_set_x.into_raw_vec()).unwrap();
-
+        Array::from_shape_vec((train_set_x.len_of(Axis(0)), 12288), train_set_x.into_raw_vec()).unwrap();
+    //
     let test_set_x_flatten =
-        Array::from_shape_vec((12288, 50), test_set_x.into_raw_vec()).unwrap();
+        Array::from_shape_vec((test_set_x.len_of(Axis(0)), 12288), test_set_x.into_raw_vec()).unwrap();
+
+    // let a = Array::from_shape_vec((1, train_set_y.len_of(Axis(0))), train_set_y.into_raw_vec()).unwrap();
+
+    // let testing =
+    //     Array::from_shape_vec((test_set_x.len_of(Axis(0)), 0), test_set_x.into_raw_vec()).unwrap();
 
 
-    let train_set_x1 = train_set_x_flatten / 255.;
-    let test_set_x1 = test_set_x_flatten / 255.;
 
-    let linear_regression_model =
+    let train_set_x1 = train_set_x_flatten.reversed_axes() / 255.;
+    let test_set_x1 = test_set_x_flatten.reversed_axes()  / 255.;
+    // let r = array![[1.0]];
+    // println!("{:?}", r.len_of(Axis(0)));
+
+
+    let logistic_regression_model =
         model(train_set_x1, train_set_y, test_set_x1, test_set_y, 5000, 0.005, true);
 
+    let image = open_image(num_px as u32);
+
+
+    let my_predicted_image = predict(&logistic_regression_model.3, logistic_regression_model.4, image);
+    // println!("Your algorithm predicts a {:?}", label[my_predicted_image.len_of(Axis(0))])
+    println!("{:?}", my_predicted_image);
     // let train_set_x_flatten =
     //     Array::from_shape_vec((train_set_x.len_of(Axis(0)), 1), train_set_x.into_raw_vec()).unwrap();
     // let test_set_x_flatten =
@@ -266,13 +333,20 @@ fn main() {
 
     //println!("{:?}", r);
 
+    // let w = array![[0.1124579], [0.23106775]];
+    // let b = -0.3;
+    // let X = array![[1., -1.1, -3.2],[1.2, 2., 0.1]];
+    //
+    // println!("{:?}", predict(&w, b, X));
 
     // let w = array![[1.], [2.]];
     // let b = 1.5;
     // let X = array![[1., -2., -1.], [3., 0.5, -3.2]];
     // let Y = array![[1., 1., 0.]];
-    //
-    // propagate(&w, b, &X, &Y);
+    // //
+    // optimize2(&w, b, &X, &Y, 100, 0.009, false);
+    // let a = propagate2(&w, b, &X, &Y);
+    // println!("{:?}", a.0);
     // let optz = optimize(&w, b, &X, &Y, 100, 0.009, true);
     //println!("{:?} HERE", optz.0);
 
