@@ -8,7 +8,7 @@ use hdf5::types::FixedAscii;
 use image::GenericImageView;
 use image::imageops::FilterType;
 
-
+// Sigmoid function
 fn sigmoid<T, A>(z: &ArrayBase<T, A>) -> ArrayBase<OwnedRepr<f64>, A>
     where
         T: RawData + Data<Elem = f64>,
@@ -18,6 +18,7 @@ fn sigmoid<T, A>(z: &ArrayBase<T, A>) -> ArrayBase<OwnedRepr<f64>, A>
     let s = 1. / (1. + arr.mapv(f64::exp));
     return s;
 }
+
 
 fn initialize_with_zeros(dim: usize) -> (Array2<f64>, f64) {
 
@@ -177,7 +178,7 @@ fn main() {
     let logistic_regression_model =
         model(train_set_x1, train_set_y, test_set_x1, test_set_y, 7000, 0.05, true);
 
-    let image = open_image("phone.jpg");
+    let image = open_image("tiger.jpg");
 
     let my_predicted_image = predict(&logistic_regression_model.3, logistic_regression_model.4, image);
     println!("{:?}", label.slice(s![my_predicted_image.sum() as i32]));
